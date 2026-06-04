@@ -82,8 +82,8 @@ export async function callGeminiMultimodal(imageUrl) {
   const modelName = process.env.GOOGLE_AI_MODEL || 'gemini-2.0-flash';
 
   if (!isGoogleAIConfigured()) {
-    console.warn("⚠️ Google AI Studio API Key not configured. Returning mock image analysis.");
-    return "L'utilisateur a envoyé une image (Mock: Robe d'été Casual de couleur Rose).";
+    console.warn("⚠️ Google AI Studio API Key not configured. Cannot analyze image.");
+    return "L'utilisateur a envoyé une photo, mais l'analyse d'image est désactivée (clé API Google AI manquante).";
   }
 
   try {
@@ -122,15 +122,15 @@ Ou : "L'utilisateur a envoyé une photo de : Une robe de soirée rouge pailleté
 
     // Validate response structure
     if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
-      console.warn("⚠️ Google AI Studio returned an invalid response for image analysis. Falling back to mock.");
-      return "L'utilisateur a envoyé une image (Mock: Robe d'été Casual de couleur Rose).";
+      console.warn("⚠️ Google AI Studio returned an invalid response for image analysis.");
+      return "L'utilisateur a envoyé une photo, mais l'analyse a échoué.";
     }
 
     return response.choices[0].message.content;
   } catch (error) {
     console.error("Error calling Gemini Multimodal (Google AI Studio):", error.message || error);
     console.warn("⚠️ Falling back to mock image analysis.");
-    return "L'utilisateur a envoyé une image (Mock: Robe d'été Casual de couleur Rose).";
+    return "L'utilisateur a envoyé une photo, mais l'analyse a échoué (erreur API).";
   }
 }
 
@@ -142,8 +142,8 @@ export async function transcribeAudioWithGemini(audioUrl) {
   const modelName = process.env.GOOGLE_AI_MODEL || 'gemini-2.0-flash';
 
   if (!isGoogleAIConfigured()) {
-    console.warn("⚠️ Google AI Studio API Key not configured. Returning mock transcription.");
-    return "bghit ncommandi ljean slim ftil size 40";
+    console.warn("⚠️ Google AI Studio API Key not configured. Cannot transcribe audio.");
+    return "[Transcription audio non disponible - clé API Google AI manquante]";
   }
 
   try {
@@ -198,8 +198,8 @@ Ta réponse doit uniquement contenir la transcription brute.`
 
     // Validate response structure
     if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
-      console.warn("⚠️ Google AI Studio returned an invalid response for audio transcription. Falling back to mock.");
-      return "bghit ncommandi ljean slim ftil size 40";
+      console.warn("⚠️ Google AI Studio returned an invalid response for audio transcription.");
+      return "[Transcription audio échouée]";
     }
 
     const transcription = response.choices[0].message.content.trim();
@@ -208,7 +208,7 @@ Ta réponse doit uniquement contenir la transcription brute.`
   } catch (error) {
     console.error("Error transcribing audio with Gemini (Google AI Studio):", error.message || error);
     console.warn("⚠️ Falling back to mock transcription.");
-    return "bghit ncommandi ljean slim ftil size 40";
+    return "[Transcription audio échouée - erreur API]";
   }
 }
 

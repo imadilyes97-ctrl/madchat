@@ -153,8 +153,13 @@ app.post('/webhook', async (req, res) => {
       const transcription = await transcribeAudioWithGemini(content);
       console.log(`[Webhook] Gemini transcribed audio: "${transcription}"`);
 
-      // Ajouter le texte transcrit comme message de l'utilisateur
-      addToHistory(userId, 'user', `(Message vocal transcrit) : ${transcription}`);
+      // Si la transcription a échoué, on l'ajoute comme message système
+      if (transcription.startsWith('[')) {
+        addToHistory(userId, 'system', `[Système] L'utilisateur a envoyé un message vocal. ${transcription}. Réponds en tant que Yasmine, informe poliment que tu n'as pas pu comprendre le message et demande de réécrire en texte.`);
+      } else {
+        // Ajouter le texte transcrit comme message de l'utilisateur
+        addToHistory(userId, 'user', `(Message vocal transcrit) : ${transcription}`);
+      }
       
     } else {
       // Message texte normal -> L'ajouter Ã  l'historique
