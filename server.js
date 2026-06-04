@@ -289,6 +289,11 @@ app.get('/api/catalog', (req, res) => {
 // Servir le dossier public (chat UI)
 app.use(express.static('public'));
 
+// Route racine : affiche l'interface chat
+app.get('/', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'chat.html'));
+});
+
 // Activer le serveur
 app.listen(PORT, () => {
   console.log(`\nðŸš€ Yasmine Chatbot Backend running on http://localhost:${PORT}`);
