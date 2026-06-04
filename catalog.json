@@ -1,0 +1,42 @@
+[
+  {
+    "id": "prod_1",
+    "nom": "Robe d'été Casual",
+    "description": "Robe légère d'été, style décontracté, parfaite pour le quotidien. Matière coton respirant. Disponible en Bleu ciel, Rose et Vert olive.",
+    "prix": 4500,
+    "stock": 15,
+    "tailles": ["S", "M", "L", "XL"]
+  },
+  {
+    "id": "prod_2",
+    "nom": "Jean Slim Fit",
+    "description": "Jean slim stretch. Coupe ajustée, tissu résistant et très confortable. Disponible en Bleu brut et Noir.",
+    "prix": 3800,
+    "stock": 22,
+    "tailles": ["38", "40", "42", "44"]
+  },
+  {
+    "id": "prod_3",
+    "nom": "Abaya Moderne Chic",
+    "description": "Abaya élégante avec broderies discrètes. Parfaite pour les occasions et les sorties. Tissu de haute qualité. Disponible en Noir, Beige et Vert émeraude.",
+    "prix": 7500,
+    "stock": 8,
+    "tailles": ["Standard"]
+  },
+  {
+    "id": "prod_4",
+    "nom": "Coffret Maquillage Premium",
+    "description": "Coffret complet comprenant fond de teint, rouge à lèvres mat, mascara volume et palette d'ombres à paupières. Marque hypoallergénique.",
+    "prix": 5200,
+    "stock": 10,
+    "tailles": []
+  },
+  {
+    "id": "prod_5",
+    "nom": "Sac à Main en Cuir",
+    "description": "Sac à main élégant en cuir véritable avec bandoulière amovible. Idéal pour le travail ou les soirées. Disponible en Marron et Noir.",
+    "prix": 8900,
+    "stock": 5,
+    "tailles": []
+  }
+]

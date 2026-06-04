@@ -1,0 +1,258 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yasmine Chatbot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+    .header { background: #6a0dad; color: #fff; padding: 16px 20px; text-align: center; }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .header p { font-size: 12px; opacity: 0.85; }
+    .chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 80%; padding: 12px 16px; border-radius: 18px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+    .msg.user { background: #6a0dad; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .msg.bot { background: #fff; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .msg.system { background: #fff3cd; color: #856404; align-self: center; font-size: 12px; border-radius: 8px; padding: 6px 12px; }
+    .msg img { max-width: 100%; border-radius: 12px; margin-top: 6px; display: block; }
+    .msg .audio-label { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+    .input-area { padding: 8px 12px; background: #fff; border-top: 1px solid #e0e0e0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .input-area input[type="text"] { flex: 1; min-width: 120px; padding: 10px 16px; border: 1px solid #ddd; border-radius: 24px; font-size: 14px; outline: none; }
+    .input-area input[type="text"]:focus { border-color: #6a0dad; }
+    .input-area .btn { background: #6a0dad; color: #fff; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; flex-shrink: 0; }
+    .input-area .btn:hover { background: #5a0ca0; }
+    .input-area .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .input-area .btn-outline { background: none; border: 1px solid #ccc; color: #555; }
+    .input-area .btn-outline:hover { background: #f0f0f0; }
+    .input-area .btn-recording { background: #e74c3c; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    .input-area .file-name { font-size: 11px; color: #666; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .typing { color: #999; font-style: italic; font-size: 13px; align-self: flex-start; }
+    .reset-btn { background: none; border: 1px solid rgba(255,255,255,0.4); color: #fff; padding: 4px 12px; border-radius: 12px; cursor: pointer; font-size: 12px; margin-left: 12px; }
+    .reset-btn:hover { background: rgba(255,255,255,0.15); }
+    #imageInput { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Yasmine 🌸</h1>
+    <p>Conseillère commerciale</p>
+    <button class="reset-btn" onclick="resetSession()">↺ Nouvelle conversation</button>
+  </div>
+  <div class="chat" id="chat"></div>
+  <div class="input-area" id="inputArea">
+    <input type="text" id="input" placeholder="Écrivez votre message..." autofocus onkeydown="if(event.key==='Enter') send()">
+    <button class="btn btn-outline" id="imgBtn" onclick="document.getElementById('imageInput').click()" title="Envoyer une image">🖼</button>
+    <button class="btn btn-outline" id="audioBtn" onclick="toggleRecording()" title="Enregistrer un audio">🎤</button>
+    <button class="btn" id="sendBtn" onclick="send()">➤</button>
+  </div>
+  <input type="file" id="imageInput" accept="image/*" onchange="handleImageSelect(event)">
+
+  <script>
+    const USER_ID = 'webchat_' + Date.now();
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const imgBtn = document.getElementById('imgBtn');
+    const audioBtn = document.getElementById('audioBtn');
+
+    let pendingImage = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let pendingAudio = null;
+
+    function addMsg(text, role, extra) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      if (extra && extra.image) {
+        const img = document.createElement('img');
+        img.src = extra.image;
+        img.alt = 'Image envoyée';
+        div.appendChild(img);
+        if (text) {
+          const p = document.createElement('p');
+          p.style.marginTop = '6px';
+          p.textContent = text;
+          div.appendChild(p);
+        }
+      } else if (extra && extra.audio) {
+        const label = document.createElement('div');
+        label.className = 'audio-label';
+        label.textContent = '🎤 Message vocal';
+        div.appendChild(label);
+        if (text) {
+          const p = document.createElement('p');
+          p.textContent = text;
+          div.appendChild(p);
+        }
+      } else {
+        div.textContent = text;
+      }
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function showTyping() {
+      const div = document.createElement('div');
+      div.className = 'typing';
+      div.id = 'typing';
+      div.textContent = 'Yasmine est en train d\'écrire...';
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function hideTyping() {
+      const el = document.getElementById('typing');
+      if (el) el.remove();
+    }
+
+    function setLoading(state) {
+      input.disabled = state;
+      sendBtn.disabled = state;
+      imgBtn.disabled = state;
+      audioBtn.disabled = state;
+      if (state) input.blur(); else input.focus();
+    }
+
+    function handleImageSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        pendingImage = ev.target.result;
+        addMsg('', 'user', { image: pendingImage });
+        sendImage(pendingImage);
+        pendingImage = null;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+
+    async function sendImage(dataUrl) {
+      setLoading(true);
+      showTyping();
+      try {
+        const res = await fetch('/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: USER_ID, type: 'image', content: dataUrl })
+        });
+        const data = await res.json();
+        hideTyping();
+        if (data.reply) addMsg(data.reply, 'bot');
+        if (data.orderCreated) addMsg('✅ Commande enregistrée avec succès !', 'system');
+      } catch (err) {
+        hideTyping();
+        addMsg('Erreur de connexion au serveur.', 'system');
+      }
+      setLoading(false);
+    }
+
+    async function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        addMsg('Enregistrement audio non supporté sur ce navigateur.', 'system');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+          const reader = new FileReader();
+          reader.onload = function(ev) {
+            pendingAudio = ev.target.result;
+            addMsg('', 'user', { audio: true });
+            sendAudio(pendingAudio);
+            pendingAudio = null;
+          };
+          reader.readAsDataURL(blob);
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        audioBtn.className = 'btn btn-recording';
+        audioBtn.title = 'Arrêter l\'enregistrement';
+      } catch (err) {
+        addMsg('Impossible d\'accéder au microphone.', 'system');
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        audioBtn.className = 'btn btn-outline';
+        audioBtn.title = 'Enregistrer un audio';
+      }
+    }
+
+    async function sendAudio(dataUrl) {
+      setLoading(true);
+      showTyping();
+      try {
+        const res = await fetch('/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: USER_ID, type: 'audio', content: dataUrl })
+        });
+        const data = await res.json();
+        hideTyping();
+        if (data.reply) addMsg(data.reply, 'bot');
+        if (data.orderCreated) addMsg('✅ Commande enregistrée avec succès !', 'system');
+      } catch (err) {
+        hideTyping();
+        addMsg('Erreur de connexion au serveur.', 'system');
+      }
+      setLoading(false);
+    }
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      addMsg(text, 'user');
+      setLoading(true);
+      showTyping();
+      try {
+        const res = await fetch('/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: USER_ID, type: 'text', content: text })
+        });
+        const data = await res.json();
+        hideTyping();
+        if (data.reply) addMsg(data.reply, 'bot');
+        if (data.orderCreated) addMsg('✅ Commande enregistrée avec succès !', 'system');
+      } catch (err) {
+        hideTyping();
+        addMsg('Erreur de connexion au serveur.', 'system');
+      }
+      setLoading(false);
+    }
+
+    async function resetSession() {
+      try {
+        await fetch('/webhook/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: USER_ID })
+        });
+        chat.innerHTML = '';
+        addMsg('Nouvelle conversation démarrée. Bonjour ! 😊', 'bot');
+      } catch (err) {
+        addMsg('Erreur lors du reset.', 'system');
+      }
+    }
+
+    addMsg('Bonjour ! Je suis Yasmine, votre conseillère commerciale. Comment puis-je vous aider aujourd\'hui ? 😊', 'bot');
+  </script>
+</body>
+</html>
