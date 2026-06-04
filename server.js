@@ -315,11 +315,15 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(process.cwd(), 'public', 'chat.html'));
 });
 
-// Activer le serveur
-app.listen(PORT, () => {
-  console.log(`\nðŸš€ Yasmine Chatbot Backend running on http://localhost:${PORT}`);
-  console.log(`- Webhook Endpoint: POST http://localhost:${PORT}/webhook`);
-  console.log(`- Reset Session Endpoint: POST http://localhost:${PORT}/webhook/reset`);
-  console.log(`- Sync Catalog Endpoint: POST/GET http://localhost:${PORT}/api/catalog\n`);
-});
+// Activer le serveur (local) ou exporter pour Vercel
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\nðŸš€ Yasmine Chatbot Backend running on http://localhost:${PORT}`);
+    console.log(`- Webhook Endpoint: POST http://localhost:${PORT}/webhook`);
+    console.log(`- Reset Session Endpoint: POST http://localhost:${PORT}/webhook/reset`);
+    console.log(`- Sync Catalog Endpoint: POST/GET http://localhost:${PORT}/api/catalog\n`);
+  });
+}
+
+export default app;
 
