@@ -14,9 +14,10 @@ import {
   STATES 
 } from './sessionStore.js';
 import { 
-  callDeepSeek, 
-  callGeminiMultimodal, 
-  transcribeAudioWithGemini 
+  callDeepSeek,
+  callGeminiText,
+  callGeminiWithImage,
+  transcribeWithWhisper
 } from './llmService.js';
 
 dotenv.config();
@@ -141,23 +142,31 @@ app.post('/webhook', async (req, res) => {
 
     // --- Ã‰tape 1 : Router et traiter selon le type de message ---
     if (type === 'image') {
-      // Message avec image -> Utiliser Gemini pour l'analyser
-      const imageAnalysis = await callGeminiMultimodal(content);
-      console.log(`[Webhook] Gemini image analysis: ${imageAnalysis}`);
+      const history = getHistory(userId);
+      const systemPrompt = getSystemPrompt(session, catalog);
 
-      // Ajouter l'analyse comme directive systÃ¨me dans l'historique
-      addToHistory(userId, 'system', `[SystÃ¨me] L'utilisateur a envoyÃ© une photo. Analyse visuelle : ${imageAnalysis}. RÃ©ponds en tant que Yasmine, montre de l'enthousiasme, confirme le produit et propose de commander.`);
-      
+      const geminiReply = await callGeminiWithImage(history, systemPrompt, content);
+
+      if (geminiReply.startsWith('Désolée')) {
+        addToHistory(userId, 'user', '[Image envoyée]');
+        addToHistory(userId, 'system', "[Système] L'utilisateur a envoyé une photo mais l'analyse d'image est temporairement indisponible. Réponds en tant que Yasmine, demande poliment à l'utilisateur de décrire ce qu'il cherche ou ce qu'il a envoyé.");
+      } else {
+        addToHistory(userId, 'user', '[Image envoyée]');
+        addToHistory(userId, 'assistant', geminiReply);
+        return res.json({
+          reply: geminiReply,
+          orderCreated: false,
+          orderDetails: null
+        });
+      }
     } else if (type === 'audio') {
-      // Message vocal -> Utiliser Gemini pour transcrire
-      const transcription = await transcribeAudioWithGemini(content);
-      console.log(`[Webhook] Gemini transcribed audio: "${transcription}"`);
+      // Message vocal -> Transcrire avec Whisper, puis envoyer le texte à DeepSeek
+      const transcription = await transcribeWithWhisper(content);
+      console.log(`[Webhook] Whisper transcription: "${transcription}"`);
 
-      // Si la transcription a échoué, on l'ajoute comme message système
       if (transcription.startsWith('[')) {
         addToHistory(userId, 'system', `[Système] L'utilisateur a envoyé un message vocal. ${transcription}. Réponds en tant que Yasmine, informe poliment que tu n'as pas pu comprendre le message et demande de réécrire en texte.`);
       } else {
-        // Ajouter le texte transcrit comme message de l'utilisateur
         addToHistory(userId, 'user', `(Message vocal transcrit) : ${transcription}`);
       }
       
@@ -172,23 +181,24 @@ app.post('/webhook', async (req, res) => {
     const lastUserMsg = history[history.length - 1].content.toLowerCase();
 
     // DÃ©tection basique pour guider les Ã©tats
+    const lastContent = history[history.length - 1].content.replace(/^\(Message vocal transcrit\)\s*:\s*/, '');
+    const lastContentLower = lastContent.toLowerCase();
+
     if (session.state === STATES.DISCOVERY) {
-      if (lastUserMsg.includes('commandi') || lastUserMsg.includes('commander') || lastUserMsg.includes('prendre') || lastUserMsg.includes('bghit')) {
+      if (lastContentLower.includes('commandi') || lastContentLower.includes('commander') || lastContentLower.includes('prendre') || lastContentLower.includes('bghit')) {
         session.state = STATES.COLLECTING_NAME;
       }
     } else if (session.state === STATES.COLLECTING_NAME) {
-      // On assume que le client donne son nom
-      session.order.nom = history[history.length - 1].content;
+      session.order.nom = lastContent;
       session.state = STATES.COLLECTING_PHONE;
     } else if (session.state === STATES.COLLECTING_PHONE) {
-      // On extrait les chiffres du numÃ©ro de tÃ©lÃ©phone
-      const phoneDigits = history[history.length - 1].content.replace(/\D/g, '');
+      const phoneDigits = lastContent.replace(/\D/g, '');
       if (phoneDigits.length >= 8) {
         session.order.telephone = phoneDigits;
         session.state = STATES.COLLECTING_LOCATION;
       }
     } else if (session.state === STATES.COLLECTING_LOCATION) {
-      session.order.wilaya_commune = history[history.length - 1].content;
+      session.order.wilaya_commune = lastContent;
       session.state = STATES.AWAITING_CONFIRMATION;
     }
 
@@ -196,9 +206,15 @@ app.post('/webhook', async (req, res) => {
 
     // --- Ã‰tape 3 : Appeler DeepSeek pour gÃ©nÃ©rer la rÃ©ponse ---
     const systemPrompt = getSystemPrompt(session, catalog);
-    const rawReply = await callDeepSeek(history, systemPrompt);
+    let rawReply = await callDeepSeek(history, systemPrompt);
 
-    console.log(`[Webhook] DeepSeek raw response length: ${rawReply.length}`);
+    // Fallback automatique si DeepSeek est indisponible
+    if (rawReply === "Désolée, une erreur est survenue. Peux-tu reformuler ?" || rawReply === "Désolée, je n'ai pas pu générer de réponse.") {
+      console.warn("[Webhook] DeepSeek failed, falling back to Gemini.");
+      rawReply = await callGeminiText(history, systemPrompt);
+    }
+
+    console.log(`[Webhook] Raw response length: ${rawReply.length}`);
 
     // --- Ã‰tape 4 : Intercepter le JSON final pour n8n ---
     let cleanReply = rawReply;
