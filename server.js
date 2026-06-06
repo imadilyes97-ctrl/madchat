@@ -15,8 +15,8 @@ import {
 } from './sessionStore.js';
 import { 
   callDeepSeek,
-  callGeminiText,
-  callGeminiWithImage,
+  callGroqText,
+  callGroqVision,
   transcribeWithWhisper
 } from './llmService.js';
 
@@ -142,22 +142,15 @@ app.post('/webhook', async (req, res) => {
 
     // --- Ã‰tape 1 : Router et traiter selon le type de message ---
     if (type === 'image') {
-      const history = getHistory(userId);
-      const systemPrompt = getSystemPrompt(session, catalog);
+      console.log(`[Webhook] Image received, sending to Groq vision...`);
+      const groqDescription = await callGroqVision(content);
 
-      const geminiReply = await callGeminiWithImage(history, systemPrompt, content);
-
-      if (geminiReply.startsWith('Désolée')) {
-        addToHistory(userId, 'user', '[Image envoyée]');
-        addToHistory(userId, 'system', "[Système] L'utilisateur a envoyé une photo mais l'analyse d'image est temporairement indisponible. Réponds en tant que Yasmine, demande poliment à l'utilisateur de décrire ce qu'il cherche ou ce qu'il a envoyé.");
+      if (groqDescription) {
+        addToHistory(userId, 'user', `[Image envoyée]`);
+        addToHistory(userId, 'system', `[Système] Le client a envoyé une image : ${groqDescription}. Réponds en tant que Yasmine, conseillère commerciale, en commentant l'image de façon naturelle et en aidant le client.`);
       } else {
         addToHistory(userId, 'user', '[Image envoyée]');
-        addToHistory(userId, 'assistant', geminiReply);
-        return res.json({
-          reply: geminiReply,
-          orderCreated: false,
-          orderDetails: null
-        });
+        addToHistory(userId, 'system', "[Système] L'utilisateur a envoyé une photo mais l'analyse d'image est temporairement indisponible. Réponds en tant que Yasmine, demande poliment à l'utilisateur de décrire ce qu'il cherche ou ce qu'il a envoyé.");
       }
     } else if (type === 'audio') {
       // Message vocal -> Transcrire avec Whisper, puis envoyer le texte à DeepSeek
@@ -210,8 +203,8 @@ app.post('/webhook', async (req, res) => {
 
     // Fallback automatique si DeepSeek est indisponible
     if (rawReply === "Désolée, une erreur est survenue. Peux-tu reformuler ?" || rawReply === "Désolée, je n'ai pas pu générer de réponse.") {
-      console.warn("[Webhook] DeepSeek failed, falling back to Gemini.");
-      rawReply = await callGeminiText(history, systemPrompt);
+      console.warn("[Webhook] DeepSeek failed, falling back to Groq.");
+      rawReply = await callGroqText(history, systemPrompt);
     }
 
     console.log(`[Webhook] Raw response length: ${rawReply.length}`);

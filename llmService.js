@@ -7,23 +7,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Helpers to check if keys are configured
-function isGoogleAIConfigured() {
-  return process.env.GOOGLE_AI_API_KEY && !process.env.GOOGLE_AI_API_KEY.includes('your_');
-}
-
-const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
-const GOOGLE_MODEL = process.env.GOOGLE_AI_MODEL || 'gemini-2.0-flash';
-const GOOGLE_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-
-// Convert OpenAI-format history to Gemini-format contents
-function toGeminiContents(history) {
-  return history.map(msg => ({
-    role: msg.role === 'assistant' ? 'model' : msg.role === 'system' ? 'user' : msg.role,
-    parts: [{ text: String(msg.content) }]
-  }));
-}
-
 function isOpenAIConfigured() {
   return process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes('your_');
 }
@@ -80,90 +63,110 @@ export async function callDeepSeek(history, systemPrompt) {
 }
 
 /**
- * Fallback text chat using Gemini (used when OpenCode is down)
+ * Fallback text chat using Groq (used when OpenCode is down)
  */
-export async function callGeminiText(history, systemPrompt) {
-  if (!isGoogleAIConfigured()) {
+export async function callGroqText(history, systemPrompt) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
     return "Désolée, le service de conversation n'est pas disponible pour le moment.";
   }
 
   try {
-    const contents = toGeminiContents(history);
-    const body = {
-      contents,
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { temperature: 0.7 }
-    };
-
     const response = await axios.post(
-      `${GOOGLE_BASE_URL}/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`,
-      body,
-      { headers: { 'Content-Type': 'application/json' } }
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...history
+        ],
+        temperature: 0.7,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
     );
 
-    const text = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = response?.data?.choices?.[0]?.message?.content;
     if (!text) {
-      console.warn("Invalid Gemini response:", JSON.stringify(response.data));
+      console.warn("Invalid Groq response:", JSON.stringify(response.data));
       return "Désolée, je n'ai pas pu générer de réponse.";
     }
 
     return text;
   } catch (error) {
-    console.error("Gemini text error:", error.response?.data?.error?.message || error.message);
+    console.error("Groq text error:", error.response?.data?.error?.message || error.message);
     return "Désolée, une erreur est survenue. Peux-tu reformuler ?";
   }
 }
 
 /**
- * 2. Full conversation with image using Gemini (native API)
+ * 2. Analyse d'image via Groq (Llama 4 Scout - multimodal)
+ * Convertit l'URL en base64 (Groq ne gère pas les redirects) puis envoie au modèle.
  */
-export async function callGeminiWithImage(history, systemPrompt, imageUrl) {
-  if (!isGoogleAIConfigured()) {
-    return "Désolée, l'analyse d'image n'est pas disponible pour le moment.";
+export async function callGroqVision(imageUrl) {
+  const apiKey = process.env.GROQ_API_KEY;
+  const model = process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+  if (!apiKey) {
+    return "";
   }
 
   try {
-    const contents = toGeminiContents(history);
+    let dataUrl = imageUrl;
 
-    // Parse the image data URL
-    const imgMatches = imageUrl.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!imgMatches) {
-      throw new Error('Invalid image data URL');
+    // Si l'URL n'est pas déjà un data URL, télécharger l'image et la convertir en base64
+    if (!imageUrl.startsWith('data:')) {
+      console.log(`[GroqVision] Downloading image from URL: ${imageUrl.substring(0, 80)}...`);
+      const imgResp = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 10000
+      });
+      const contentType = imgResp.headers['content-type'] || 'image/jpeg';
+      const base64 = Buffer.from(imgResp.data).toString('base64');
+      dataUrl = `data:${contentType};base64,${base64}`;
+      console.log(`[GroqVision] Image downloaded, size: ${base64.length} bytes`);
     }
-    const mimeType = imgMatches[1];
-    const base64Data = imgMatches[2];
-
-    // Add the image message
-    contents.push({
-      role: 'user',
-      parts: [
-        { text: "L'utilisateur a envoyé cette photo. Analyse-la et réponds en tant que Yasmine, conseillère commerciale." },
-        { inline_data: { mime_type: mimeType, data: base64Data } }
-      ]
-    });
-
-    const body = {
-      contents,
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { temperature: 0.7 }
-    };
 
     const response = await axios.post(
-      `${GOOGLE_BASE_URL}/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`,
-      body,
-      { headers: { 'Content-Type': 'application/json' } }
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: "Décris précisément ce que tu vois dans cette image en français. Si ce sont des vêtements, précise le type, la couleur, le style et tout détail pertinent. Si c'est un accessoire ou un autre produit, décris-le avec précision." },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ]
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 300
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
     );
 
-    const text = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = response?.data?.choices?.[0]?.message?.content;
     if (!text) {
-      console.warn("Invalid Gemini image response:", JSON.stringify(response.data));
-      return "Désolée, je n'ai pas pu analyser l'image.";
+      console.warn("Invalid Groq vision response:", JSON.stringify(response.data));
+      return "";
     }
 
-    return text;
+    return text.trim();
   } catch (error) {
-    console.error("Gemini image error:", error.response?.data?.error?.message || error.message);
-    return "Désolée, je n'ai pas pu analyser l'image pour le moment.";
+    const errDetail = error.response?.data || error.message;
+    console.error("Groq vision error:", JSON.stringify(errDetail));
+    return "";
   }
 }
 
