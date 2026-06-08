@@ -49,6 +49,9 @@ export function getSession(userId) {
         total: 0,
         langue: 'fr'
       },
+      produits: [],
+      config: null,
+      token: null,
       lastInteraction: new Date().toISOString()
     };
     persistSessions();
@@ -78,6 +81,9 @@ export function resetSession(userId) {
       total: 0,
       langue: 'fr'
     },
+    produits: [],
+    config: null,
+    token: null,
     lastInteraction: new Date().toISOString()
   };
   persistSessions();

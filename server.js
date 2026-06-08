@@ -27,9 +27,11 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const PORT = process.env.PORT || 3000;
+const APP_URL = process.env.APP_URL;
+const SECRET_TOKEN = process.env.SECRET_TOKEN;
 const CATALOG_PATH = path.join(process.cwd(), 'catalog.json');
 
-// Load catalog helper
+// Load catalog helper (fallback)
 function loadCatalog() {
   try {
     if (fs.existsSync(CATALOG_PATH)) {
@@ -41,9 +43,34 @@ function loadCatalog() {
   return [];
 }
 
+// Fetch products + config from external SaaS using token from message
+async function fetchExternalData(token) {
+  if (!token) {
+    console.warn('[External] No token provided, using local catalog');
+    return null;
+  }
+  try {
+    const res = await axios.get('https://imadilyes97-ctrl-lasaas.vercel.app/api/products', {
+      params: { token },
+      timeout: 10000
+    });
+    console.log('[External] Data fetched successfully');
+    return res.data;
+  } catch (err) {
+    console.error('[External] Failed to fetch data:', err.message);
+    return null;
+  }
+}
+
 // System prompt generator
-function getSystemPrompt(session, catalog) {
-  return `Tu es Yasmine, une conseillÃ¨re commerciale chaleureuse, expÃ©rimentÃ©e et passionnÃ©e par ton travail dans notre boutique en ligne.
+function getSystemPrompt(session) {
+  const config = session.config || {};
+  const botName = config.nom_chatbot || 'Yasmine';
+  const welcomeMsg = config.message_bienvenue || 'Bonjour !';
+  const defaultLangue = config.langue || 'fr';
+  const catalog = session.produits.length > 0 ? session.produits : loadCatalog();
+
+  return `Tu es ${botName}, une conseillÃ¨re commerciale chaleureuse, expÃ©rimentÃ©e et passionnÃ©e par ton travail dans notre boutique en ligne.
 Ton rÃ´le est d'accueillir les clients, les aider Ã  choisir les bons produits, les inciter Ã  passer commande, et collecter les informations nÃ©cessaires Ã  la livraison.
 Tu n'es PAS un robot. Tu es une vraie personne attentionnÃ©e qui traite chaque client comme s'il Ã©tait unique.
 
@@ -66,7 +93,7 @@ Tu ne prÃ©sentes que les produits en stock. Voici le catalogue actuel de nos a
 ${JSON.stringify(catalog, null, 2)}
 
 ðŸ’¬ FLOW DE CONVERSATION & COLLECTE D'INFOS (UNE PAR UNE) :
-1. Accueil chaleureux.
+1. Accueil chaleureux avec : "${welcomeMsg}"
 2. DÃ©couverte du besoin (poser des questions ouvertes, proposer des articles pertinents avec prix clair).
 3. Persuasion & gestion des objections (preuve sociale, rassurer).
 4. Commande & Collecte d'informations :
@@ -77,7 +104,7 @@ ${JSON.stringify(catalog, null, 2)}
    - Ã‰tape 1 : Nom complet
    - Ã‰tape 2 : NumÃ©ro de tÃ©lÃ©phone
    - Ã‰tape 3 : Wilaya / Commune (lieu de livraison)
-   - Ã‰tape 4 : PrÃ©senter le rÃ©capitulatif complet de la commande pour validation finale.
+   - Ã‰tape 4 : PrÃ©senter le rÃ©capitulatif complet de la commande pour validation finale (inclure produit(s), couleur, taille, prix).
 
 INFORMATIONS ACTUELLES DE COMMANDE DU CLIENT :
 - Nom complet : ${session.order.nom || "Non collectÃ©"}
@@ -108,13 +135,15 @@ Tu dois gÃ©nÃ©rer EXACTEMENT ce JSON structurÃ© pour notre systÃ¨me n8n 
         "sous_total": 0
       }
     ],
+    "couleur": "{{COULEUR_CHOISIE}}",
+    "taille": "{{TAILLE_CHOISIE}}",
     "total": 0,
     "devise": "DZD",
     "statut": "en_attente"
   },
   "meta": {
     "canal": "chatbot",
-    "agent": "Yasmine",
+    "agent": "${botName}",
     "version": "1.0"
   }
 }
@@ -128,7 +157,7 @@ Ensuite, envoie ton message de remerciement chaleureux final en utilisant le pr�
  * ReÃ§oit : { userId, type: 'text'|'image'|'audio', content: 'texte ou URL' }
  */
 app.post('/webhook', async (req, res) => {
-  const { userId, type, content } = req.body;
+  const { userId, type, content, token } = req.body;
 
   if (!userId || !type || !content) {
     return res.status(400).json({ error: "Missing required fields: userId, type, content" });
@@ -136,7 +165,24 @@ app.post('/webhook', async (req, res) => {
 
   try {
     const session = getSession(userId);
-    const catalog = loadCatalog();
+
+    // Store token in session if provided (to avoid re-calling API on every message)
+    if (token) {
+      session.token = token;
+    }
+
+    // Fetch external data at conversation start (new session or missing products)
+    if ((!session.produits || session.produits.length === 0) && session.token) {
+      const externalData = await fetchExternalData(session.token);
+      if (externalData) {
+        session.produits = externalData.produits || [];
+        session.config = externalData.config || null;
+        saveSession(userId, session);
+        console.log('[Webhook] External data loaded into session');
+      }
+    }
+
+    const catalog = session.produits.length > 0 ? session.produits : loadCatalog();
 
     console.log(`[Webhook] Message received from ${userId} | Type: ${type}`);
 
@@ -198,7 +244,7 @@ app.post('/webhook', async (req, res) => {
     saveSession(userId, session);
 
     // --- Ã‰tape 3 : Appeler DeepSeek pour gÃ©nÃ©rer la rÃ©ponse ---
-    const systemPrompt = getSystemPrompt(session, catalog);
+    const systemPrompt = getSystemPrompt(session);
     let rawReply = await callDeepSeek(history, systemPrompt);
 
     // Fallback automatique si DeepSeek est indisponible
@@ -224,7 +270,26 @@ app.post('/webhook', async (req, res) => {
         orderDetails = JSON.parse(jsonString);
         orderCreated = true;
 
-        console.log(`[Webhook] ðŸŽ‰ Order confirmed! JSON payload captured:`, orderDetails);
+        console.log(`[Webhook] Order confirmed! JSON payload captured:`, orderDetails);
+
+        // Envoyer Ã  l'application externe
+        if (APP_URL && SECRET_TOKEN) {
+          const externalPayload = {
+            token: SECRET_TOKEN,
+            nom: orderDetails.client?.nom || '',
+            telephone: orderDetails.client?.telephone || '',
+            wilaya: orderDetails.client?.wilaya || '',
+            commune: orderDetails.client?.commune || '',
+            produits: orderDetails.commande?.produits?.map(p => p.nom_produit).join(', ') || '',
+            couleur: orderDetails.commande?.couleur || '',
+            taille: orderDetails.commande?.taille || '',
+            total: orderDetails.commande?.total || 0,
+            statut: 'en_attente'
+          };
+          axios.post(`${APP_URL}/api/webhook`, externalPayload)
+            .then(() => console.log('[Webhook] Order successfully posted to external app!'))
+            .catch(err => console.error('[Webhook] Failed to post to external app:', err.message));
+        }
 
         // Envoyer Ã  n8n en arriÃ¨re-plan
         const n8nUrl = process.env.N8N_WEBHOOK_URL;
@@ -233,7 +298,7 @@ app.post('/webhook', async (req, res) => {
             .then(() => console.log('[Webhook] Order successfully posted to n8n webhook!'))
             .catch(err => console.error('[Webhook] Failed to post to n8n webhook:', err.message));
         } else {
-          console.log('[Webhook] âš ï¸ N8N_WEBHOOK_URL is not configured. Webhook dispatch skipped.');
+          console.log('[Webhook] N8N_WEBHOOK_URL is not configured. Webhook dispatch skipped.');
         }
 
         // Mettre Ã  jour la session en Ã©tat complÃ©tÃ©
