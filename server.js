@@ -19,6 +19,7 @@ import {
   callGroqVision,
   transcribeWithWhisper
 } from './llmService.js';
+import { findMatchingProduct } from './visionService.js';
 
 dotenv.config();
 
@@ -188,15 +189,35 @@ app.post('/webhook', async (req, res) => {
 
     // --- Ã‰tape 1 : Router et traiter selon le type de message ---
     if (type === 'image') {
-      console.log(`[Webhook] Image received, sending to Groq vision...`);
-      const groqDescription = await callGroqVision(content);
+      if (session.token && catalog.length > 0) {
+        console.log(`[Webhook] Image received, matching against ${catalog.length} products...`);
+        const matchedProduct = await findMatchingProduct(content, session.token);
 
-      if (groqDescription) {
-        addToHistory(userId, 'user', `[Image envoyée]`);
-        addToHistory(userId, 'system', `[Système] Le client a envoyé une image : ${groqDescription}. Réponds en tant que Yasmine, conseillère commerciale, en commentant l'image de façon naturelle et en aidant le client.`);
+        if (matchedProduct) {
+          addToHistory(userId, 'user', `[Image envoyée]`);
+          addToHistory(userId, 'system', `[Système] Le client a envoyé une photo. J'ai analysé l'image et trouvé une correspondance avec notre produit :
+- Nom : ${matchedProduct.nom}
+- Prix : ${matchedProduct.prix} DZD
+- Tailles disponibles : ${matchedProduct.tailles?.join(', ')}
+- Couleurs disponibles : ${matchedProduct.couleurs?.join(', ')}
+- Stock : ${matchedProduct.stock} unités
+Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
+        } else {
+          addToHistory(userId, 'user', `[Image envoyée]`);
+          addToHistory(userId, 'system', `[Système] Le client a envoyé une photo d'un produit. J'ai analysé l'image mais je n'ai pas trouvé de correspondance exacte dans notre catalogue. Dis-lui poliment que ce produit n'est pas disponible et propose-lui de voir nos produits disponibles.`);
+        }
       } else {
-        addToHistory(userId, 'user', '[Image envoyée]');
-        addToHistory(userId, 'system', "[Système] L'utilisateur a envoyé une photo mais l'analyse d'image est temporairement indisponible. Réponds en tant que Yasmine, demande poliment à l'utilisateur de décrire ce qu'il cherche ou ce qu'il a envoyé.");
+        // Fallback: simple description without product matching
+        console.log(`[Webhook] Image received (no token/catalog), sending to Groq vision...`);
+        const groqDescription = await callGroqVision(content);
+
+        if (groqDescription) {
+          addToHistory(userId, 'user', `[Image envoyée]`);
+          addToHistory(userId, 'system', `[Système] Le client a envoyé une image : ${groqDescription}. Réponds en tant que Yasmine, conseillère commerciale, en commentant l'image de façon naturelle et en aidant le client.`);
+        } else {
+          addToHistory(userId, 'user', '[Image envoyée]');
+          addToHistory(userId, 'system', "[Système] L'utilisateur a envoyé une photo mais l'analyse d'image est temporairement indisponible. Réponds en tant que Yasmine, demande poliment à l'utilisateur de décrire ce qu'il cherche ou ce qu'il a envoyé.");
+        }
       }
     } else if (type === 'audio') {
       // Message vocal -> Transcrire avec Whisper, puis envoyer le texte à DeepSeek
