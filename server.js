@@ -388,6 +388,37 @@ app.get('/api/catalog', (req, res) => {
   res.json(loadCatalog());
 });
 
+// Endpoint pour la transcription audio (utilisÃ© par n8n)
+app.post('/api/transcribe', async (req, res) => {
+  const { token, audioUrl } = req.body;
+
+  if (!audioUrl) {
+    return res.status(400).json({ error: "Missing audioUrl parameter" });
+  }
+
+  // VÃ©rifier le token si fourni
+  if (token && token !== SECRET_TOKEN) {
+    return res.status(403).json({ error: "Invalid token" });
+  }
+
+  try {
+    console.log(`[Transcribe API] Received transcription request for: ${audioUrl}`);
+    const transcription = await transcribeWithWhisper(audioUrl);
+
+    console.log(`[Transcribe API] Transcription successful: "${transcription}"`);
+    return res.json({
+      success: true,
+      text: transcription
+    });
+  } catch (error) {
+    console.error("[Transcribe API] Error:", error.message);
+    return res.status(500).json({
+      error: "Transcription failed",
+      details: error.message
+    });
+  }
+});
+
 // Servir le dossier public (chat UI)
 app.use(express.static('public'));
 
