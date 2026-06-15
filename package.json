@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-flow.js"
+    "test": "node test-flow.js",
+    "test-transcribe": "node test-transcribe.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
