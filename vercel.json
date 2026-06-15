@@ -3,23 +3,21 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": "**"
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "server.js",
-      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
-    }
-  ],
-  "rewrites": [
+      "src": "/api/(.*)",
+      "dest": "server.js"
+    },
     {
-      "source": "/(.*)",
-      "destination": "server.js"
+      "src": "/webhook(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/chat.html"
     }
   ]
 }
