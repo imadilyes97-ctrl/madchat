@@ -91,6 +91,43 @@ RÃ¨gle absolue : RÃ©ponds TOUJOURS dans la langue et le dialecte exacts util
 - Client mÃ©lange franÃ§ais et arabe â†’ rÃ©ponds avec ce mÃªme mÃ©lange naturel.
 Ne pose jamais de question sur la langue, dÃ©tecte-la automatiquement.
 
+	VOCABULAIRE DARIJA POUR LES COMMANDES (Ã  connaÃ®tre ABSOLUMENT) :
+	- "b3atli" / "Ø¨Ø¹Ø«Ù„ÙŠ" = envoie-moi (ex: "b3atli tsawer" = envoie-moi des photos)
+	- "tsawer" / "ØªØµØ§ÙˆØ±" = photos
+	- "bghit" / "Ø¨ØºÙŠØª" = je veux (ex: "bghit nchri had" = je veux acheter)
+	- "ncommandi" / "Ù†ÙƒÙˆÙ…Ø§Ù†Ø¯ÙŠ" = je commande
+	- "nchri" / "Ù†Ø´Ø±ÙŠ" = j'achÃ¨te
+	- "chhal" / "Ø´Ø­Ø§Ù„" = combien (ex: "chhal had" = combien Ã§a coÃ»te ?)
+	- "chhal hada" / "Ø´Ø­Ø§Ù„ Ù‡Ø§Ø¯Ø§" = combien Ã§a coÃ»te
+	- "hob" / "Ù‡ÙˆØ¨" = d'accord / je veux bien
+	- "wellah" / "ÙˆØ§Ù„Ù„Ù‡" = vraiment
+	- "saha" / "ØµØ­Ø©" = merci
+	- "rabi yahafdek" / "Ø±Ø¨ÙŠ ÙŠØ­ÙØ¸Ùƒ" = merci / que Dieu te protÃ¨ge
+	- "wach" / "ÙˆØ§Ø´" = est-ce que / quoi
+	- "had" / "Ù‡Ø§Ø¯" = ce/cet
+	- "hadou" / "Ù‡Ø§Ø¯Ùˆ" = ceux-ci
+	- "hadi" / "Ù‡Ø§Ø¯ÙŠ" = celle-ci
+	- "chkoun" / "Ø´ÙƒÙˆÙ†" = qui
+	- "fayne" / "ÙØ§ÙŠÙ†" = oÃ¹
+	- "l'wed" / "Ø§Ù„ÙˆØ§Ø¯" = la livraison
+	- "khalas" / "Ø®Ù„Øµ" = payÃ© / d'accord
+	- "rani" / "Ø±Ø§Ù†ÙŠ" = je suis
+	- "maak" / "Ù…Ø¹Ø§Ùƒ" = avec toi
+	- "habel" / "Ù‡Ø¨Ù„" = magnifique / j'adore
+	- "ted" / "ØªÙŠØ¯" = donne (ex: "ted liya" = donne-moi)
+	- "nshuf" / "Ù†Ø´ÙˆÙ" = je regarde / je vais voir
+	- "doka" / "Ø¯ÙˆÙƒØ§" = tout de suite / maintenant
+	- "bsif" / "Ø¨Ø³ÙŠÙ" = le prix
+	- "ya3tik saha" / "ÙŠØ¹Ø·ÙŠÙƒ Ø§Ù„ØµØ­Ø©" = merci
+	- "semahli" / "Ø³Ù…Ø­Ù„ÙŠ" = excuse-moi / dÃ©solÃ©
+	- "mazal" / "Ù…Ø§Ø²Ø§Ù„" = encore / pas encore
+
+	SI LE CLIENT PARLE EN DARIJA ALGÃ‰RIENNE :
+	- Utilise les mots ci-dessus pour comprendre ce qu'il dit
+	- RÃ©ponds dans la mÃªme darija algÃ©rienne (pas darija marocaine)
+	- N'hÃ©site pas Ã  utiliser des mots darija dans tes rÃ©ponses
+	- Sois naturelle, les algÃ©riens mÃ©langent toujours franÃ§ais et darija
+
 ðŸ›ï¸ CATALOGUE & STOCK :
 Tu ne prÃ©sentes que les produits en stock. Voici le catalogue actuel de nos articles :
 ${JSON.stringify(catalog, null, 2)}
@@ -162,7 +199,64 @@ Ensuite, envoie ton message de remerciement chaleureux final en utilisant le pr�
 }
 
 /**
- * Endpoint principal pour le Chatbot (ManyChat / Make / Custom Webhook)
+
+// Fonction d'extraction intelligente des infos de commande
+// Detecte nom, telephone, wilaya dans un seul message
+const ALGERIAN_WILAYAS = [
+  'adrar','chlef','laghouat','oum el bouaghi','batna','bejaia','biskra','bechar',
+  'blida','bouira','tamanrasset','tebessa','tlemcen','tiaret','tizi ouzou','alger',
+  'djelfa','jijel','setif','saida','skikda','sidi bel abbes','annaba','guelma',
+  'constantin','medea','mostaganem','msila','mascara','ouargla','oran','el bayadh',
+  'bordj bou areridj','boumerdes','el tarf','tindouf','tissemsilt','el oued','khenchela',
+  'souk ahras','tipaza','mila','ain defla','naama','ain temouchent','ghardaia','relizane'
+];
+
+function extractOrderInfo(text) {
+  const info = { nom: null, telephone: null, wilaya_commune: null, allFound: false };
+  if (!text) return info;
+  let cleaned = text;
+
+  // 1. Extract phone (Algerian format)
+  const phoneRegex = /(?:0[5-7])(?:[\s.-]?\d){8}|(?:\+213|00213)[5-7](?:[\s.-]?\d){8}|(?:05|06|07)\d{8}/g;
+  const phoneMatch = cleaned.match(phoneRegex);
+  if (phoneMatch) {
+    const raw = phoneMatch[0];
+    info.telephone = raw.replace(/[\s.-]/g, '');
+    cleaned = cleaned.replace(raw, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  // 2. Extract wilaya/commune
+  for (const wilaya of ALGERIAN_WILAYAS) {
+    const lower = cleaned.toLowerCase();
+    if (lower.includes(wilaya)) {
+      const idx = lower.indexOf(wilaya);
+      const start = Math.max(0, cleaned.substring(0, idx).lastIndexOf(',') + 1);
+      const end = cleaned.indexOf(',', idx) !== -1 ? cleaned.indexOf(',', idx) : cleaned.length;
+      info.wilaya_commune = cleaned.substring(start, end).replace(/^(et\s*|,?\s*)/i, '').trim();
+      break;
+    }
+  }
+
+  // 3. Clean remaining text to get name
+  let nameText = cleaned
+    .replace(/je m'appelle|mon nom est|je suis|c'est|ana|ismi|rani|moi c'est|nom\s*:/gi, '')
+    .replace(/mon numero|telephone|tel|num\s*:/gi, '')
+    .replace(/wilaya|commune|adresse|ville|de\s*:/gi, '')
+    .replace(/et\s*(mon|le|la)?/gi, '')
+    .replace(/[0-9+\s\-()]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (nameText && nameText.split(/\s+/).length <= 6 && nameText.length > 2) {
+    nameText = nameText.charAt(0).toUpperCase() + nameText.slice(1);
+    info.nom = nameText;
+  }
+
+  info.allFound = !!(info.nom && info.telephone && info.wilaya_commune);
+  return info;
+}
+
+/**
  * ReÃ§oit : { userId, type: 'text'|'image'|'audio', content: 'texte ou URL', token?, metaToken? }
  *   - metaToken : Facebook Page Access Token (nÃ©cessaire pour tÃ©lÃ©charger les audios depuis le CDN Facebook)
  */
@@ -290,22 +384,52 @@ Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
     const lastContent = history[history.length - 1].content.replace(/^\(Message vocal transcrit\)\s*:\s*/, '');
     const lastContentLower = lastContent.toLowerCase();
 
+    // Keywords Darija/Francais pour "je veux commander"
+    const orderKeywords = ['commandi','commander','prendre','bghit','ncommandi','nchri','hob'];
+
     if (session.state === STATES.DISCOVERY) {
-      if (lastContentLower.includes('commandi') || lastContentLower.includes('commander') || lastContentLower.includes('prendre') || lastContentLower.includes('bghit')) {
+      if (orderKeywords.some(kw => lastContentLower.includes(kw))) {
         session.state = STATES.COLLECTING_NAME;
       }
-    } else if (session.state === STATES.COLLECTING_NAME) {
-      session.order.nom = lastContent;
-      session.state = STATES.COLLECTING_PHONE;
-    } else if (session.state === STATES.COLLECTING_PHONE) {
-      const phoneDigits = lastContent.replace(/\D/g, '');
-      if (phoneDigits.length >= 8) {
-        session.order.telephone = phoneDigits;
-        session.state = STATES.COLLECTING_LOCATION;
+    } else {
+      const extracted = extractOrderInfo(lastContent);
+
+      if (session.state === STATES.COLLECTING_NAME) {
+        if (extracted.telephone && extracted.wilaya_commune) {
+          if (extracted.nom) session.order.nom = extracted.nom;
+          else session.order.nom = lastContent;
+          session.order.telephone = extracted.telephone;
+          session.order.wilaya_commune = extracted.wilaya_commune;
+          session.state = STATES.AWAITING_CONFIRMATION;
+        } else if (extracted.telephone) {
+          if (extracted.nom) session.order.nom = extracted.nom;
+          else session.order.nom = lastContent.replace(extracted.telephone, '').trim();
+          session.order.telephone = extracted.telephone;
+          session.state = STATES.COLLECTING_LOCATION;
+        } else {
+          if (extracted.nom) session.order.nom = extracted.nom;
+          else session.order.nom = lastContent;
+          session.state = STATES.COLLECTING_PHONE;
+        }
+      } else if (session.state === STATES.COLLECTING_PHONE) {
+        if (extracted.telephone) {
+          session.order.telephone = extracted.telephone;
+          if (extracted.wilaya_commune) {
+            session.order.wilaya_commune = extracted.wilaya_commune;
+            session.state = STATES.AWAITING_CONFIRMATION;
+          } else {
+            session.state = STATES.COLLECTING_LOCATION;
+          }
+        }
+      } else if (session.state === STATES.COLLECTING_LOCATION) {
+        if (extracted.wilaya_commune) {
+          session.order.wilaya_commune = extracted.wilaya_commune;
+          session.state = STATES.AWAITING_CONFIRMATION;
+        } else if (lastContentLower.length > 3) {
+          session.order.wilaya_commune = lastContent;
+          session.state = STATES.AWAITING_CONFIRMATION;
+        }
       }
-    } else if (session.state === STATES.COLLECTING_LOCATION) {
-      session.order.wilaya_commune = lastContent;
-      session.state = STATES.AWAITING_CONFIRMATION;
     }
 
     saveSession(userId, session);
