@@ -390,10 +390,34 @@ Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
     // Ajouter la rÃ©ponse nettoyÃ©e de Yasmine Ã  l'historique
     addToHistory(userId, 'assistant', texteFinal);
 
-    // Renvoyer la rÃ©ponse formatÃ©e avec les photos
+    // Construire les messages ordonnÃ©s pour Make/n8n
+    // Format simple : un tableau d'actions que Make peut itÃ©rer directement
+    const messages = [];
+
+    // 1. Texte toujours en premier
+    if (texteFinal.trim()) {
+      messages.push({
+        type: 'text',
+        content: texteFinal.trim()
+      });
+    }
+
+    // 2. Photos ensuite (une par une)
+    for (const photoUrl of photosExtraites) {
+      messages.push({
+        type: 'image',
+        url: photoUrl
+      });
+    }
+
+    // Renvoyer la rÃ©ponse formatÃ©e
+    // Make/n8n n'a qu'Ã  boucler sur "messages[]" :
+    // - si type = "text" -> Send Message
+    // - si type = "image" -> Send Image Attachment
     return res.json({
       reply: texteFinal,
       photos: photosExtraites,
+      messages,
       orderCreated,
       orderDetails
     });
