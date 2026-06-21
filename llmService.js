@@ -17,6 +17,15 @@ const openaiClient = isOpenAIConfigured()
     })
   : null;
 
+function getGroqClient() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://api.groq.com/openai/v1'
+  });
+}
+
 /**
  * 1. Text chat using DeepSeek via OpenCode API (direct axios)
  */
@@ -171,62 +180,182 @@ export async function callGroqVision(imageUrl) {
 }
 
 /**
- * 4. Audio transcription using OpenAI Whisper
+ * 4a. Audio transcription using Groq Whisper (multilingual, fast, already configured)
  */
-export async function transcribeWithWhisper(audioUrl) {
-  if (!isOpenAIConfigured()) {
-    console.warn("OpenAI API Key not configured. Cannot transcribe audio.");
-    return "[Transcription audio non disponible]";
+export async function transcribeWithGroq(audioUrl) {
+  const groqClient = getGroqClient();
+  if (!groqClient) {
+    console.warn("Groq API Key not configured. Cannot transcribe audio.");
+    return null;
   }
 
+  let tmpFile = null;
   try {
-    let base64Audio, format, mimeType;
-    let tmpFile = null;
+    let audioBuffer, format;
 
     if (audioUrl.startsWith('data:')) {
       const matches = audioUrl.match(/^data:audio\/(\w+);base64,(.+)$/);
-      if (matches) {
-        format = matches[1];
-        base64Audio = matches[2];
-        mimeType = `audio/${format}`;
-      } else {
-        throw new Error('Invalid audio data URL format');
-      }
-      console.log(`Received audio data URL (format: ${format}, length: ${base64Audio.length})`);
+      if (!matches) throw new Error('Invalid audio data URL format');
+      format = matches[1];
+      audioBuffer = Buffer.from(matches[2], 'base64');
+      console.log(`[GroqTranscribe] Data URL audio (format: ${format}, size: ${audioBuffer.length})`);
     } else {
-      console.log(`Downloading audio from: ${audioUrl}`);
-      const audioResponse = await axios.get(audioUrl, { responseType: 'arraybuffer' });
-      const buffer = Buffer.from(audioResponse.data);
-      base64Audio = buffer.toString('base64');
-      format = 'mp3';
-      if (audioUrl.includes('.wav')) format = 'wav';
-      if (audioUrl.includes('.ogg')) format = 'ogg';
-      if (audioUrl.includes('.m4a')) format = 'm4a';
-      mimeType = `audio/${format}`;
+      console.log(`[GroqTranscribe] Downloading audio from: ${audioUrl.substring(0, 100)}...`);
+      const audioResponse = await axios.get(audioUrl, {
+        responseType: 'arraybuffer',
+        timeout: 20000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          'Accept': 'audio/*, */*',
+          'Accept-Language': 'fr,fr-FR;q=0.9,en;q=0.8',
+          'Referer': 'https://www.facebook.com/'
+        }
+      });
+      audioBuffer = Buffer.from(audioResponse.data);
+      format = detectAudioFormat(audioUrl, audioResponse.headers['content-type']);
+      console.log(`[GroqTranscribe] Audio downloaded (${audioBuffer.length} bytes, format: ${format})`);
     }
 
-    const audioBuffer = Buffer.from(base64Audio, 'base64');
-    tmpFile = path.join(os.tmpdir(), `audio_${Date.now()}.${format}`);
+    tmpFile = path.join(os.tmpdir(), `groq_audio_${Date.now()}.${format}`);
     fs.writeFileSync(tmpFile, audioBuffer);
 
-    const result = await openaiClient.audio.transcriptions.create({
-      model: 'whisper-1',
+    const result = await groqClient.audio.transcriptions.create({
+      model: 'whisper-large-v3-turbo',
       file: fs.createReadStream(tmpFile),
       language: 'fr',
     });
 
-    fs.unlinkSync(tmpFile);
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
 
-    const text = result.text.trim();
-    console.log(`Successfully transcribed audio with Whisper: "${text}"`);
+    const text = result.text?.trim();
+    if (!text) {
+      console.warn('[GroqTranscribe] Empty response');
+      return null;
+    }
+    console.log(`[GroqTranscribe] ✅ "${text.substring(0, 120)}..."`);
     return text;
   } catch (error) {
     if (tmpFile && fs.existsSync(tmpFile)) {
-      fs.unlinkSync(tmpFile);
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
     }
-    console.error("Error transcribing with Whisper:", error.message || error);
+    const errDetail = error.response?.data || error.message;
+    console.error("[GroqTranscribe] Error:", JSON.stringify(errDetail));
+    return null;
+  }
+}
+
+/** Détecter le format audio depuis l'URL et le content-type */
+function detectAudioFormat(url, contentType) {
+  if (url) {
+    if (url.includes('.wav')) return 'wav';
+    if (url.includes('.ogg')) return 'ogg';
+    if (url.includes('.m4a')) return 'm4a';
+    if (url.includes('.webm')) return 'webm';
+    if (url.includes('.mp4')) return 'm4a';
+    if (url.includes('.oga')) return 'ogg';
+    if (url.includes('.opus')) return 'ogg';
+  }
+  if (contentType) {
+    if (contentType.includes('wav') || contentType.includes('wave')) return 'wav';
+    if (contentType.includes('ogg') || contentType.includes('opus')) return 'ogg';
+    if (contentType.includes('m4a') || contentType.includes('mp4')) return 'm4a';
+    if (contentType.includes('webm')) return 'webm';
+  }
+  return 'mp3';
+}
+
+/**
+ * 4b. Télécharger un fichier audio depuis une URL (avec retry et headers navigateur)
+ */
+async function downloadAudio(url) {
+  const attempts = [
+    { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Accept': 'audio/*,*/*', 'Referer': 'https://www.facebook.com/' } },
+    { headers: { 'User-Agent': 'curl/8.0', 'Accept': '*/*' } },
+    {}
+  ];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000, headers: attempts[i].headers });
+      if (resp.data?.length > 100) return { buffer: Buffer.from(resp.data), contentType: resp.headers['content-type'] };
+      console.warn(`[Download] Attempt ${i + 1} returned only ${resp.data?.length} bytes`);
+    } catch (e) {
+      console.warn(`[Download] Attempt ${i + 1} failed: ${e.message}`);
+    }
+  }
+  return null;
+}
+
+/**
+ * 4c. Transcribe audio with fallbacks: try local file path → OpenAI → Groq
+ */
+export async function transcribeWithWhisper(audioUrl) {
+  if (!audioUrl || typeof audioUrl !== 'string') {
+    console.error("[Whisper] Invalid audio URL:", audioUrl);
     return "[Transcription audio échouée]";
   }
+
+  // Helper: envoyer un fichier à Whisper (OpenAI ou Groq)
+  async function transcribeFile(filePath, model, client, label) {
+    try {
+      const result = await client.audio.transcriptions.create({
+        model,
+        file: fs.createReadStream(filePath),
+        language: 'fr',
+      });
+      return result.text?.trim() || null;
+    } catch (err) {
+      console.warn(`[Whisper/${label}] API error:`, err.message);
+      return null;
+    }
+  }
+
+  // Étape 1 : Vérifier si c'est déjà un chemin fichier local
+  if (fs.existsSync(audioUrl)) {
+    console.log(`[Whisper] Local file detected: ${audioUrl}`);
+    if (openaiClient) {
+      const t = await transcribeFile(audioUrl, 'whisper-1', openaiClient, 'OpenAI/local');
+      if (t) { console.log(`[Whisper] ✅ Local file transcribed via OpenAI: "${t.substring(0, 120)}"`); return t; }
+    }
+    const groq = getGroqClient();
+    if (groq) {
+      const t = await transcribeFile(audioUrl, 'whisper-large-v3-turbo', groq, 'Groq/local');
+      if (t) { console.log(`[Whisper] ✅ Local file transcribed via Groq: "${t.substring(0, 120)}"`); return t; }
+    }
+    return "[Transcription audio échouée]";
+  }
+
+  // Étape 2 : Télécharger l'audio depuis l'URL
+  console.log(`[Whisper] Downloading audio from: ${audioUrl.substring(0, 120)}...`);
+  const download = await downloadAudio(audioUrl);
+  if (!download) {
+    console.error("[Whisper] All download attempts failed");
+    return "[Transcription audio échouée]";
+  }
+
+  const format = detectAudioFormat(audioUrl, download.contentType);
+  const tmpFile = path.join(os.tmpdir(), `audio_${Date.now()}.${format}`);
+  fs.writeFileSync(tmpFile, download.buffer);
+  console.log(`[Whisper] Downloaded ${download.buffer.length} bytes (format: ${format})`);
+
+  try {
+    // Essai A : OpenAI Whisper
+    if (openaiClient) {
+      const t = await transcribeFile(tmpFile, 'whisper-1', openaiClient, 'OpenAI');
+      if (t) { try { fs.unlinkSync(tmpFile); } catch (_) {} console.log(`[Whisper] ✅ OpenAI: "${t.substring(0, 120)}"`); return t; }
+    }
+
+    // Essai B : Groq Whisper (déjà configuré, plus rapide)
+    const groq = getGroqClient();
+    if (groq) {
+      const t = await transcribeFile(tmpFile, 'whisper-large-v3-turbo', groq, 'Groq');
+      if (t) { try { fs.unlinkSync(tmpFile); } catch (_) {} console.log(`[Whisper] ✅ Groq fallback: "${t.substring(0, 120)}"`); return t; }
+    }
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+
+  console.error("[Whisper] All transcription services failed");
+  return "[Transcription audio échouée]";
 }
 
 

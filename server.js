@@ -163,10 +163,11 @@ Ensuite, envoie ton message de remerciement chaleureux final en utilisant le pr�
 
 /**
  * Endpoint principal pour le Chatbot (ManyChat / Make / Custom Webhook)
- * ReÃ§oit : { userId, type: 'text'|'image'|'audio', content: 'texte ou URL' }
+ * ReÃ§oit : { userId, type: 'text'|'image'|'audio', content: 'texte ou URL', token?, metaToken? }
+ *   - metaToken : Facebook Page Access Token (nÃ©cessaire pour tÃ©lÃ©charger les audios depuis le CDN Facebook)
  */
 app.post('/webhook', async (req, res) => {
-  const { userId, type, content, token } = req.body;
+  const { userId, type, content, token, metaToken } = req.body;
 
   if (!userId || !type || !content) {
     return res.status(400).json({ error: "Missing required fields: userId, type, content" });
@@ -228,16 +229,53 @@ Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
         }
       }
     } else if (type === 'audio') {
-      // Message vocal -> Transcrire avec Whisper, puis envoyer le texte à DeepSeek
-      const transcription = await transcribeWithWhisper(content);
-      console.log(`[Webhook] Whisper transcription: "${transcription}"`);
+      // Message vocal -> Transcription via le dashboard (qui a le metaToken Facebook)
+      // ou en fallback direct via Groq/OpenAI Whisper
+      console.log(`[Webhook] Audio message received, content preview: ${(content || '').substring(0, 120)}`);
+      console.log(`[Webhook] metaToken ${metaToken ? 'fourni' : 'NON fourni'}, token ${token ? 'fourni' : 'NON fourni'}`);
 
-      if (transcription.startsWith('[')) {
-        addToHistory(userId, 'system', `[Système] L'utilisateur a envoyé un message vocal. ${transcription}. Réponds en tant que Yasmine, informe poliment que tu n'as pas pu comprendre le message et demande de réécrire en texte.`);
+      let transcription = null;
+
+      // Essai 1 : Via le dashboard /api/transcribe (si on a metaToken)
+      if (metaToken && token) {
+        const dashboardUrl = process.env.APP_URL || 'https://imadilyes97-ctrl-lasaas.vercel.app';
+        console.log(`[Webhook] Attempting transcription via dashboard proxy (${dashboardUrl}/api/transcribe)...`);
+        try {
+          const proxyResp = await axios.post(`${dashboardUrl}/api/transcribe`, {
+            token,
+            audioUrl: content,
+            metaToken
+          }, { timeout: 60000 });
+          if (proxyResp.data?.text) {
+            transcription = proxyResp.data.text;
+            console.log(`[Webhook] Dashboard transcription success: "${transcription.substring(0, 120)}..."`);
+          } else {
+            console.warn('[Webhook] Dashboard returned no text:', JSON.stringify(proxyResp.data));
+          }
+        } catch (proxyErr) {
+          console.warn('[Webhook] Dashboard proxy failed:', proxyErr.response?.data || proxyErr.message);
+        }
       } else {
+        console.log('[Webhook] No metaToken available, skipping dashboard proxy');
+      }
+
+      // Essai 2 : Transcription directe (fallback si le proxy n'a pas marchÃ©)
+      if (!transcription) {
+        console.log('[Webhook] Trying direct transcription...');
+        transcription = await transcribeWithWhisper(content);
+      }
+
+      console.log(`[Webhook] Final transcription result: "${(transcription || '').substring(0, 200)}"`);
+
+      if (!transcription || transcription.startsWith('[')) {
+        const raison = transcription || '[Transcription impossible]';
+        console.warn(`[Webhook] Audio transcription failed: ${raison}`);
+        addToHistory(userId, 'system', `[Système] L'utilisateur a envoyé un message vocal. La transcription a échoué (${raison}). Réponds en tant que Yasmine, informe poliment que tu n'as pas pu comprendre le message et demande de réécrire en texte.`);
+      } else {
+        console.log(`[Webhook] Audio transcribed successfully: "${transcription.substring(0, 100)}..."`);
         addToHistory(userId, 'user', `(Message vocal transcrit) : ${transcription}`);
       }
-      
+
     } else {
       // Message texte normal -> L'ajouter Ã  l'historique
       addToHistory(userId, 'user', content);
