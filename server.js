@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -132,32 +132,42 @@ Ne pose jamais de question sur la langue, dÃ©tecte-la automatiquement.
 Tu ne prÃ©sentes que les produits en stock. Voici le catalogue actuel de nos articles :
 ${JSON.stringify(catalog, null, 2)}
 
-ðŸ’¬ FLOW DE CONVERSATION & COLLECTE D'INFOS (UNE PAR UNE) :
-1. Accueil chaleureux avec : "${welcomeMsg}"
-2. DÃ©couverte du besoin (poser des questions ouvertes, proposer des articles pertinents avec prix clair).
-3. Persuasion & gestion des objections (preuve sociale, rassurer).
+	ðŸ“¬ FLOW DE CONVERSATION & COLLECTE D'INFOS :
+	1. Accueil chaleureux avec : "${welcomeMsg}"
+	2. Decouverte du besoin (poser des questions ouvertes, proposer des articles pertinents avec prix clair).
+	3. Persuasion & gestion des objections (preuve sociale, rassurer).
 
-4. LIVRAISON : Des qu'un client montre de l'interet ou veut commander, mentionne TOUJOURS les frais de livraison. Chaque produit dans le catalogue a les champs "livraison_domicile" et "livraison_bureau". Dis toujours :
-   - "Livraison a domicile : [livraison_domicile] DZD"
-   - "Livraison au bureau/point relais : [livraison_bureau] DZD"
-   Exemple : "Ce produit est a [prix] DZD + [livraison_domicile] DZD de livraison a domicile (ou [livraison_bureau] DZD en point relais)."
+	4. LIVRAISON : Des qu'un client montre de l'interet ou veut commander, mentionne TOUJOURS les frais de livraison. Chaque produit dans le catalogue a les champs "livraison_domicile" et "livraison_bureau". Dis toujours :
+	   - "Livraison a domicile : [livraison_domicile] DZD"
+	   - "Livraison au bureau/point relais : [livraison_bureau] DZD"
+	   Exemple : "Ce produit est a [prix] DZD + [livraison_domicile] DZD de livraison a domicile (ou [livraison_bureau] DZD en point relais)."
 
-5. Commande & Collecte d'informations :
-   DÃ¨s que le client confirme qu'il veut passer commande (ex: "bghit ncommandi", "je prends la premiÃ¨re", "commander", etc.) :
-   Tu passes en mode collecte. Demande les informations suivantes UNE PAR UNE de faÃ§on naturelle et amicale. Ne les demande JAMAIS d'un coup.
-   
-   Ordre de collecte :
-   - Ã‰tape 1 : Nom complet
-   - Ã‰tape 2 : NumÃ©ro de tÃ©lÃ©phone
-   - Ã‰tape 3 : Wilaya / Commune (lieu de livraison)
-   - Ã‰tape 4 : PrÃ©senter le rÃ©capitulatif complet de la commande pour validation finale (inclure produit(s), couleur, taille, prix, frais de livraison et total gÃ©nÃ©ral).
+	5. Commande & Collecte d'informations :
+	   Des que le client confirme qu'il veut passer commande (ex: "bghit ncommandi", "je prends", "commander", etc.) :
+	   Tu passes en mode collecte. Regarde d'abord les INFORMATIONS ACTUELLES ci-dessous pour voir ce qui est deja collecte.
 
-INFORMATIONS ACTUELLES DE COMMANDE DU CLIENT :
-- Nom complet : ${session.order.nom || "Non collectÃ©"}
-- TÃ©lÃ©phone : ${session.order.telephone || "Non collectÃ©"}
-- Wilaya / Commune : ${session.order.wilaya_commune || "Non collectÃ©"}
-- Statut de l'Ã©tape : ${session.state}
+	   REGLE IMPORTANTE - Messages avec TOUTES les infos en une fois :
+	   Si le client donne plusieurs informations en un seul message (ex: "nom + telephone + wilaya" ou "nom + telephone" ou "telephone + wilaya"),
+	   tu les acceptes et passes directement a l'etape suivante sans rien redemander.
+	   Ne demande JAMAIS une information que le client a deja fournie !
+	   Si tu vois que tout est deja rempli dans les INFORMATIONS ACTUELLES, presente directement le recapitulatif pour validation.
 
+	   Ordre de collecte (pour ce qui manque seulement) :
+	   - Etape 1 : Nom complet (si pas encore donne)
+	   - Etape 2 : Numero de telephone (si pas encore donne)
+	   - Etape 3 : Wilaya / Commune lieu de livraison (si pas encore donne)
+	   - Etape 4 : Presenter le recapitulatif complet de la commande pour validation finale
+
+	   GESTION DES MESSAGES VOCAUX TRANSCRITS :
+	   Si le message commence par "(Message vocal transcrit)", c'est un message transforme en texte par reconnaissance vocale.
+	   Si le message transcrit semble incoherent, confus, ou que tu ne comprends pas bien :
+	   Reponds gentiment "Desolee, je n'ai pas bien compris le message vocal, peux-tu l'ecrire en message texte stp ?"
+
+	INFORMATIONS ACTUELLES DE COMMANDE DU CLIENT :
+	- Nom complet : ${session.order.nom || "Non collecte"}
+	- Telephone : ${session.order.telephone || "Non collecte"}
+	- Wilaya / Commune : ${session.order.wilaya_commune || "Non collecte"}
+	- Statut de l'etape : ${session.state}
 6. VALIDATION ET WEBHOOK JSON :
 Lorsque le client valide dÃ©finitivement son rÃ©capitulatif (avec "oui", "c'est bon", "ØµØ­", "ÙˆØ§Ù‡", etc.) :
 Tu dois gÃ©nÃ©rer EXACTEMENT ce JSON structurÃ© pour notre systÃ¨me n8n dans ta rÃ©ponse. Remplis les champs avec les donnÃ©es collectÃ©es :
@@ -199,9 +209,9 @@ Ensuite, envoie ton message de remerciement chaleureux final en utilisant le pr�
 }
 
 /**
-
-// Fonction d'extraction intelligente des infos de commande
-// Detecte nom, telephone, wilaya dans un seul message
+ * Fonction d'extraction intelligente des infos de commande
+ * Detecte nom, telephone, wilaya dans un seul message
+ */
 const ALGERIAN_WILAYAS = [
   'adrar','chlef','laghouat','oum el bouaghi','batna','bejaia','biskra','bechar',
   'blida','bouira','tamanrasset','tebessa','tlemcen','tiaret','tizi ouzou','alger',
@@ -211,12 +221,29 @@ const ALGERIAN_WILAYAS = [
   'souk ahras','tipaza','mila','ain defla','naama','ain temouchent','ghardaia','relizane'
 ];
 
+// Mots-clés Darija/Français qui signalent "je veux commander"
+const ORDER_KEYWORDS = ['commandi','commander','prendre','bghit','ncommandi','nchri','hob',
+  'je prends','je veux','bghit nchri','b3atli','ted liya','nchuf'];
+
+// Mots-clés à filtrer du nom lors de l'extraction
+const NAME_NOISE_KEYWORDS = [
+  'je m\'appelle','mon nom est','je suis','c\'est','ana','ismi','rani',
+  'moi c\'est','nom','nom complet','je m\'apelle',
+  'bghit','ncommandi','nchri','commandi','hob','saha',
+  'b3atli','ted liya','ted','nchuf','doka','khalas','wellah',
+  's\'il vous plaît','svp','stp','merci',
+  'oui','ouai','ouais','d\'accord','dakord','ok',
+  'et','puis','avec',
+  'bonjour','salam','salut','bsmellah','saha',
+  'ya3tik saha','rabi yahafdek','semahli'
+];
+
 function extractOrderInfo(text) {
   const info = { nom: null, telephone: null, wilaya_commune: null, allFound: false };
   if (!text) return info;
   let cleaned = text;
 
-  // 1. Extract phone (Algerian format)
+  // 1. Extract phone (Algerian format: 05XX XX XX XX, 06XX, 07XX, +213 5XX, 00213 5XX)
   const phoneRegex = /(?:0[5-7])(?:[\s.-]?\d){8}|(?:\+213|00213)[5-7](?:[\s.-]?\d){8}|(?:05|06|07)\d{8}/g;
   const phoneMatch = cleaned.match(phoneRegex);
   if (phoneMatch) {
@@ -225,30 +252,57 @@ function extractOrderInfo(text) {
     cleaned = cleaned.replace(raw, '').replace(/\s{2,}/g, ' ').trim();
   }
 
-  // 2. Extract wilaya/commune
-  for (const wilaya of ALGERIAN_WILAYAS) {
-    const lower = cleaned.toLowerCase();
-    if (lower.includes(wilaya)) {
-      const idx = lower.indexOf(wilaya);
-      const start = Math.max(0, cleaned.substring(0, idx).lastIndexOf(',') + 1);
-      const end = cleaned.indexOf(',', idx) !== -1 ? cleaned.indexOf(',', idx) : cleaned.length;
-      info.wilaya_commune = cleaned.substring(start, end).replace(/^(et\s*|,?\s*)/i, '').trim();
+  // 2. Extract wilaya/commune (cherche aussi "wilaya X" et "w X")
+  const wilayaPatterns = [
+    /wilaya\s*(n[o°]?\s*)?(\d{1,2})\b/i,
+    /w[.\s]*(\d{1,2})\b/i,
+    /(?:à|a|â)\s*(alger|oran|constantin|annaba|setif|blida|bejaia|tizi|tlemcen|batna)\b/i
+  ];
+  for (const pat of wilayaPatterns) {
+    const m = cleaned.match(pat);
+    if (m) {
+      info.wilaya_commune = m[0].replace(/^(wilaya\s*(n[o°]?\s*)?|w[.\s]*|à|a|â)\s*/i, '').trim();
+      cleaned = cleaned.replace(m[0], '').replace(/\s{2,}/g, ' ').trim();
       break;
     }
   }
 
+  // Fallback: cherche dans la liste des wilayas
+  if (!info.wilaya_commune) {
+    for (const wilaya of ALGERIAN_WILAYAS) {
+      const lower = cleaned.toLowerCase();
+      if (lower.includes(wilaya)) {
+        const idx = lower.indexOf(wilaya);
+        const start = Math.max(0, cleaned.substring(0, idx).lastIndexOf(',') + 1);
+        const end = cleaned.indexOf(',', idx) !== -1 ? cleaned.indexOf(',', idx) : cleaned.length;
+        info.wilaya_commune = cleaned.substring(start, end).replace(/^(et\s*|,?\s*)/i, '').trim();
+        cleaned = cleaned.replace(cleaned.substring(start, end), '').replace(/\s{2,}/g, ' ').trim();
+        break;
+      }
+    }
+  }
+
   // 3. Clean remaining text to get name
+  // Supprimer d'abord tous les mots-clés parasites (ordre et bruit)
   let nameText = cleaned
-    .replace(/je m'appelle|mon nom est|je suis|c'est|ana|ismi|rani|moi c'est|nom\s*:/gi, '')
-    .replace(/mon numero|telephone|tel|num\s*:/gi, '')
-    .replace(/wilaya|commune|adresse|ville|de\s*:/gi, '')
-    .replace(/et\s*(mon|le|la)?/gi, '')
+    .replace(new RegExp(NAME_NOISE_KEYWORDS.join('|'), 'gi'), ' ')
+    .replace(/mon numero|telephone|tel|num\s*(\d)?|tél|portable|mobile/gi, ' ')
+    .replace(/wilaya|commune|adresse|ville|de\s*:|lieu|livraison/gi, ' ')
+    .replace(/et\s*(mon|le|la|de)?/gi, ' ')
     .replace(/[0-9+\s\-()]+/g, ' ')
+    .replace(/['']/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 
   if (nameText && nameText.split(/\s+/).length <= 6 && nameText.length > 2) {
-    nameText = nameText.charAt(0).toUpperCase() + nameText.slice(1);
+    // Capitalize properly
+    nameText = nameText.split(/\s+/).map((word, i) => {
+      // Prépositions restent en minuscule si au milieu
+      if (i > 0 && ['de','du','des','le','la','el','ben','bin','ou','bni'].includes(word.toLowerCase())) {
+        return word.toLowerCase();
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
     info.nom = nameText;
   }
 
@@ -375,63 +429,94 @@ Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
       addToHistory(userId, 'user', content);
     }
 
-    // --- Ã‰tape 2 : Mettre Ã  jour l'Ã©tat logique interne de la collecte ---
-    // (Nous mettons Ã  jour l'Ã©tat de session selon les rÃ©ponses pour aider le LLM)
-    const history = getHistory(userId);
-    const lastUserMsg = history[history.length - 1].content.toLowerCase();
-
-    // DÃ©tection basique pour guider les Ã©tats
-    const lastContent = history[history.length - 1].content.replace(/^\(Message vocal transcrit\)\s*:\s*/, '');
-    const lastContentLower = lastContent.toLowerCase();
-
-    // Keywords Darija/Francais pour "je veux commander"
-    const orderKeywords = ['commandi','commander','prendre','bghit','ncommandi','nchri','hob'];
-
-    if (session.state === STATES.DISCOVERY) {
-      if (orderKeywords.some(kw => lastContentLower.includes(kw))) {
-        session.state = STATES.COLLECTING_NAME;
-      }
-    } else {
-      const extracted = extractOrderInfo(lastContent);
-
-      if (session.state === STATES.COLLECTING_NAME) {
-        if (extracted.telephone && extracted.wilaya_commune) {
-          if (extracted.nom) session.order.nom = extracted.nom;
-          else session.order.nom = lastContent;
-          session.order.telephone = extracted.telephone;
-          session.order.wilaya_commune = extracted.wilaya_commune;
-          session.state = STATES.AWAITING_CONFIRMATION;
-        } else if (extracted.telephone) {
-          if (extracted.nom) session.order.nom = extracted.nom;
-          else session.order.nom = lastContent.replace(extracted.telephone, '').trim();
-          session.order.telephone = extracted.telephone;
-          session.state = STATES.COLLECTING_LOCATION;
-        } else {
-          if (extracted.nom) session.order.nom = extracted.nom;
-          else session.order.nom = lastContent;
-          session.state = STATES.COLLECTING_PHONE;
-        }
-      } else if (session.state === STATES.COLLECTING_PHONE) {
-        if (extracted.telephone) {
-          session.order.telephone = extracted.telephone;
-          if (extracted.wilaya_commune) {
-            session.order.wilaya_commune = extracted.wilaya_commune;
-            session.state = STATES.AWAITING_CONFIRMATION;
-          } else {
-            session.state = STATES.COLLECTING_LOCATION;
-          }
-        }
-      } else if (session.state === STATES.COLLECTING_LOCATION) {
-        if (extracted.wilaya_commune) {
-          session.order.wilaya_commune = extracted.wilaya_commune;
-          session.state = STATES.AWAITING_CONFIRMATION;
-        } else if (lastContentLower.length > 3) {
-          session.order.wilaya_commune = lastContent;
-          session.state = STATES.AWAITING_CONFIRMATION;
-        }
-      }
-    }
-
+	    // --- Etape 2 : Mettre a jour l'etat logique interne de la collecte ---
+	    // Extraction intelligente des infos depuis le message (meme pendant DISCOVERY)
+	    const history = getHistory(userId);
+	    const lastUserMsgRaw = history[history.length - 1].content;
+	    const lastContent = lastUserMsgRaw.replace(/^\(Message vocal transcrit\)\s*:\s*/, '');
+	    const lastContentLower = lastContent.toLowerCase();
+	
+	    // Toujours essayer d'extraire les infos de commande, quelque soit l'etat
+	    const extracted = extractOrderInfo(lastContent);
+	
+	    if (session.state === STATES.DISCOVERY) {
+	      // Detecter l'intention de commander (Darija ou Francais)
+	      const wantsToOrder = ORDER_KEYWORDS.some(kw => lastContentLower.includes(kw));
+	
+	      if (wantsToOrder || extracted.telephone || extracted.wilaya_commune) {
+	        // Le client montre de l'interet -> commencer la collecte
+	        // Appliquer les infos deja extraites pour ne pas redemander
+	        if (extracted.nom) session.order.nom = extracted.nom;
+	        if (extracted.telephone) session.order.telephone = extracted.telephone;
+	        if (extracted.wilaya_commune) session.order.wilaya_commune = extracted.wilaya_commune;
+	
+	        // Skip aux etapes manquantes (ne pas redemander ce que le client a deja donne)
+	        if (extracted.allFound) {
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        } else if (session.order.nom && session.order.telephone && !session.order.wilaya_commune) {
+	          session.state = STATES.COLLECTING_LOCATION;
+	        } else if (session.order.nom && !session.order.telephone) {
+	          session.state = STATES.COLLECTING_PHONE;
+	        } else {
+	          session.state = STATES.COLLECTING_NAME;
+	        }
+	      }
+	    } else {
+	      // Etats de collecte actifs : utiliser l'extraction + la logique d'etat
+	
+	      if (session.state === STATES.COLLECTING_NAME) {
+	        if (extracted.allFound) {
+	          session.order.nom = extracted.nom;
+	          session.order.telephone = extracted.telephone;
+	          session.order.wilaya_commune = extracted.wilaya_commune;
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        } else if (extracted.telephone && extracted.wilaya_commune) {
+	          if (extracted.nom) session.order.nom = extracted.nom;
+	          else session.order.nom = lastContent;
+	          session.order.telephone = extracted.telephone;
+	          session.order.wilaya_commune = extracted.wilaya_commune;
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        } else if (extracted.telephone) {
+	          if (extracted.nom) session.order.nom = extracted.nom;
+	          else session.order.nom = lastContent.replace(extracted.telephone, '').trim();
+	          session.order.telephone = extracted.telephone;
+	          session.state = STATES.COLLECTING_LOCATION;
+	        } else {
+	          // Extraire le nom meme sans telephone
+	          if (extracted.nom) session.order.nom = extracted.nom;
+	          else session.order.nom = lastContent;
+	          session.state = STATES.COLLECTING_PHONE;
+	        }
+	      } else if (session.state === STATES.COLLECTING_PHONE) {
+	        if (extracted.allFound) {
+	          session.order.telephone = extracted.telephone;
+	          session.order.wilaya_commune = extracted.wilaya_commune;
+	          if (extracted.nom) session.order.nom = extracted.nom;
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        } else if (extracted.telephone) {
+	          session.order.telephone = extracted.telephone;
+	          if (extracted.wilaya_commune) {
+	            session.order.wilaya_commune = extracted.wilaya_commune;
+	            session.state = STATES.AWAITING_CONFIRMATION;
+	          } else {
+	            session.state = STATES.COLLECTING_LOCATION;
+	          }
+	        }
+	      } else if (session.state === STATES.COLLECTING_LOCATION) {
+	        if (extracted.wilaya_commune) {
+	          session.order.wilaya_commune = extracted.wilaya_commune;
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        } else if (lastContentLower.length > 3) {
+	          // Fallback: considerer tout le message comme la localisation
+	          session.order.wilaya_commune = lastContent;
+	          session.state = STATES.AWAITING_CONFIRMATION;
+	        }
+	      }
+	
+	      // Rattrapage: si on a extrait un nom ou telephone qui manquait, les mettre a jour
+	      if (extracted.nom && !session.order.nom) session.order.nom = extracted.nom;
+	      if (extracted.telephone && !session.order.telephone) session.order.telephone = extracted.telephone;
+	    }
     saveSession(userId, session);
 
     // --- Ã‰tape 3 : Appeler DeepSeek pour gÃ©nÃ©rer la rÃ©ponse ---

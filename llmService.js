@@ -222,7 +222,7 @@ export async function transcribeWithGroq(audioUrl) {
     const result = await groqClient.audio.transcriptions.create({
       model: 'whisper-large-v3-turbo',
       file: fs.createReadStream(tmpFile),
-      language: 'fr',
+      prompt: "Ce message vocal peut contenir un mélange de français et d'arabe algérien (darija), avec des chiffres et des noms de villes algériennes.",
     });
 
     try { fs.unlinkSync(tmpFile); } catch (_) {}
@@ -300,7 +300,9 @@ export async function transcribeWithWhisper(audioUrl) {
       const result = await client.audio.transcriptions.create({
         model,
         file: fs.createReadStream(filePath),
-        language: 'fr',
+        // Pas de language: 'fr' fixe → Whisper auto-détecte la langue
+        // Ça permet de transcrire correctement l'arabe algérien (darija)
+        prompt: "Ce message vocal peut contenir un mélange de français et d'arabe algérien (darija), avec des chiffres et des noms de produits.",
       });
       return result.text?.trim() || null;
     } catch (err) {
