@@ -99,7 +99,13 @@ ${JSON.stringify(catalog, null, 2)}
 1. Accueil chaleureux avec : "${welcomeMsg}"
 2. DÃ©couverte du besoin (poser des questions ouvertes, proposer des articles pertinents avec prix clair).
 3. Persuasion & gestion des objections (preuve sociale, rassurer).
-4. Commande & Collecte d'informations :
+
+4. LIVRAISON : Des qu'un client montre de l'interet ou veut commander, mentionne TOUJOURS les frais de livraison. Chaque produit dans le catalogue a les champs "livraison_domicile" et "livraison_bureau". Dis toujours :
+   - "Livraison a domicile : [livraison_domicile] DZD"
+   - "Livraison au bureau/point relais : [livraison_bureau] DZD"
+   Exemple : "Ce produit est a [prix] DZD + [livraison_domicile] DZD de livraison a domicile (ou [livraison_bureau] DZD en point relais)."
+
+5. Commande & Collecte d'informations :
    DÃ¨s que le client confirme qu'il veut passer commande (ex: "bghit ncommandi", "je prends la premiÃ¨re", "commander", etc.) :
    Tu passes en mode collecte. Demande les informations suivantes UNE PAR UNE de faÃ§on naturelle et amicale. Ne les demande JAMAIS d'un coup.
    
@@ -107,7 +113,7 @@ ${JSON.stringify(catalog, null, 2)}
    - Ã‰tape 1 : Nom complet
    - Ã‰tape 2 : NumÃ©ro de tÃ©lÃ©phone
    - Ã‰tape 3 : Wilaya / Commune (lieu de livraison)
-   - Ã‰tape 4 : PrÃ©senter le rÃ©capitulatif complet de la commande pour validation finale (inclure produit(s), couleur, taille, prix).
+   - Ã‰tape 4 : PrÃ©senter le rÃ©capitulatif complet de la commande pour validation finale (inclure produit(s), couleur, taille, prix, frais de livraison et total gÃ©nÃ©ral).
 
 INFORMATIONS ACTUELLES DE COMMANDE DU CLIENT :
 - Nom complet : ${session.order.nom || "Non collectÃ©"}
@@ -115,7 +121,7 @@ INFORMATIONS ACTUELLES DE COMMANDE DU CLIENT :
 - Wilaya / Commune : ${session.order.wilaya_commune || "Non collectÃ©"}
 - Statut de l'Ã©tape : ${session.state}
 
-5. VALIDATION ET WEBHOOK JSON :
+6. VALIDATION ET WEBHOOK JSON :
 Lorsque le client valide dÃ©finitivement son rÃ©capitulatif (avec "oui", "c'est bon", "ØµØ­", "ÙˆØ§Ù‡", etc.) :
 Tu dois gÃ©nÃ©rer EXACTEMENT ce JSON structurÃ© pour notre systÃ¨me n8n dans ta rÃ©ponse. Remplis les champs avec les donnÃ©es collectÃ©es :
 \`\`\`json
@@ -341,12 +347,53 @@ Propose ce produit au client et demande-lui sa taille et couleur préférée.`);
       }
     }
 
-    // Ajouter la rÃ©ponse nettoyÃ©e de Yasmine Ã  l'historique
-    addToHistory(userId, 'assistant', cleanReply);
+    // --- Ã‰tape 5 : Extraire les photos des liens Markdown dans la rÃ©ponse ---
+    // DeepSeek peut gÃ©nÃ©rer des liens comme [Nom Produit](url_photo_ou_produit)
+    // On extrait les photos correspondantes depuis le catalogue
+    const photosExtraites = [];
+    let texteFinal = cleanReply;
 
-    // Renvoyer la rÃ©ponse formatÃ©e
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let linkMatch;
+
+    while ((linkMatch = markdownLinkRegex.exec(cleanReply)) !== null) {
+      const linkText = linkMatch[1].toLowerCase().trim();
+      const linkUrl = linkMatch[2].trim();
+
+      // Chercher si ce lien correspond Ã  un produit du catalogue
+      const produitTrouve = catalog.find(p =>
+        p.nom?.toLowerCase().includes(linkText) ||
+        linkText.includes(p.nom?.toLowerCase())
+      );
+
+      if (produitTrouve) {
+        // Extraire les photos du produit trouvÃ©
+        if (produitTrouve.photo_url) {
+          photosExtraites.push(produitTrouve.photo_url);
+        }
+        if (produitTrouve.photos_produit?.length) {
+          for (const photo of produitTrouve.photos_produit) {
+            if (!photosExtraites.includes(photo)) {
+              photosExtraites.push(photo);
+            }
+          }
+        }
+      } else if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(linkUrl)) {
+        // Le lien lui-mÃªme est une image
+        photosExtraites.push(linkUrl);
+      }
+    }
+
+    // Nettoyer le texte : remplacer les liens Markdown par leur texte seul
+    texteFinal = texteFinal.replace(markdownLinkRegex, (_, text) => text.trim());
+
+    // Ajouter la rÃ©ponse nettoyÃ©e de Yasmine Ã  l'historique
+    addToHistory(userId, 'assistant', texteFinal);
+
+    // Renvoyer la rÃ©ponse formatÃ©e avec les photos
     return res.json({
-      reply: cleanReply,
+      reply: texteFinal,
+      photos: photosExtraites,
       orderCreated,
       orderDetails
     });

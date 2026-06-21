@@ -5,7 +5,9 @@
     "description": "Robe légère d'été, style décontracté, parfaite pour le quotidien. Matière coton respirant. Disponible en Bleu ciel, Rose et Vert olive.",
     "prix": 4500,
     "stock": 15,
-    "tailles": ["S", "M", "L", "XL"]
+    "tailles": ["S", "M", "L", "XL"],
+    "livraison_domicile": 600,
+    "livraison_bureau": 400
   },
   {
     "id": "prod_2",
@@ -13,7 +15,9 @@
     "description": "Jean slim stretch. Coupe ajustée, tissu résistant et très confortable. Disponible en Bleu brut et Noir.",
     "prix": 3800,
     "stock": 22,
-    "tailles": ["38", "40", "42", "44"]
+    "tailles": ["38", "40", "42", "44"],
+    "livraison_domicile": 600,
+    "livraison_bureau": 400
   },
   {
     "id": "prod_3",
@@ -21,7 +25,9 @@
     "description": "Abaya élégante avec broderies discrètes. Parfaite pour les occasions et les sorties. Tissu de haute qualité. Disponible en Noir, Beige et Vert émeraude.",
     "prix": 7500,
     "stock": 8,
-    "tailles": ["Standard"]
+    "tailles": ["Standard"],
+    "livraison_domicile": 700,
+    "livraison_bureau": 500
   },
   {
     "id": "prod_4",
@@ -29,7 +35,9 @@
     "description": "Coffret complet comprenant fond de teint, rouge à lèvres mat, mascara volume et palette d'ombres à paupières. Marque hypoallergénique.",
     "prix": 5200,
     "stock": 10,
-    "tailles": []
+    "tailles": [],
+    "livraison_domicile": 500,
+    "livraison_bureau": 300
   },
   {
     "id": "prod_5",
@@ -37,6 +45,8 @@
     "description": "Sac à main élégant en cuir véritable avec bandoulière amovible. Idéal pour le travail ou les soirées. Disponible en Marron et Noir.",
     "prix": 8900,
     "stock": 5,
-    "tailles": []
+    "tailles": [],
+    "livraison_domicile": 700,
+    "livraison_bureau": 500
   }
 ]
